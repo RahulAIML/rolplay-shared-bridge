@@ -998,6 +998,48 @@ case "cert.count":
     } catch(Exception $e) { err("official DB error: ".$e->getMessage(), 503); }
     out_cached(["ok"=>true,"certified"=>(int)$r["certified"]], $cache_key, SIM_TTL);
 
+case "cert.sessions":
+    // NEW — added for the Rolplay unified dashboard. Raw per-session rows for
+    // ANY usecase active in the requested window (no hardcoded ucid list
+    // required, unlike sim.demorp6). Powers trends/best-performers/results
+    // views without needing a bespoke aggregate action per view.
+    $date_from = $in["date_from"] ?? date("Y-m-d", strtotime("-30 days"));
+    $date_to   = $in["date_to"]   ?? date("Y-m-d", strtotime("+1 day"));
+    $limit     = min((int)($in["limit"] ?? 5000), 20000);
+    $cache_key = "certsess|$date_from|$date_to|$limit";
+    if(empty($in["refresh"])) serve_cached($cache_key, SIM_TTL);
+    try {
+        $st = pdo()->prepare("
+            SELECT e.saex_id, e.saex_useCases, u.usecase_name,
+                   e.saex_rp_email AS email, e.saex_username AS name,
+                   e.saex_DateTime, e.saex_score
+            FROM   sale_exercises e
+            LEFT JOIN usecases u ON u.id = e.saex_useCases
+            WHERE  e.saex_rp_client  = ?
+              AND  e.saex_DateTime  >= ?
+              AND  e.saex_DateTime  <= ?
+              AND  e.saex_rp_email  IS NOT NULL
+              AND  e.saex_rp_email  != ''
+              AND  e.saex_rp_email  NOT LIKE '%rolplay%'
+            ORDER  BY e.saex_DateTime DESC
+            LIMIT  ?
+        ");
+        $st->execute([DB_CLIENT, $date_from." 00:00:00", $date_to." 23:59:59", $limit]);
+        $rows = [];
+        while($r = $st->fetch()) {
+            $rows[] = [
+                "id"           => (int)$r["saex_id"],
+                "usecase_id"   => (int)$r["saex_useCases"],
+                "usecase_name" => html_entity_decode($r["usecase_name"] ?? "", ENT_QUOTES|ENT_HTML5, "UTF-8"),
+                "email"        => $r["email"],
+                "name"         => html_entity_decode($r["name"] ?? "", ENT_QUOTES|ENT_HTML5, "UTF-8"),
+                "date"         => $r["saex_DateTime"],
+                "score"        => (float)$r["saex_score"],
+            ];
+        }
+        out_cached(["ok"=>true,"data"=>$rows,"total_records"=>count($rows)], $cache_key, SIM_TTL);
+    } catch(Exception $e) { err("DB error: ".$e->getMessage(), 503); }
+
 default:
-    out(["ok"=>true,"bridge"=>"Rolplay Sanfer Bridge v1.6","db"=>DB_NAME,"client"=>DB_CLIENT,"actions"=>["ping","sim.demorp6","sim.report","objections.demorp6","activities.demorp6","org.members","org.admins","cert.count"]]);
+    out(["ok"=>true,"bridge"=>"Rolplay Sanfer Bridge v1.6","db"=>DB_NAME,"client"=>DB_CLIENT,"actions"=>["ping","sim.demorp6","sim.report","objections.demorp6","activities.demorp6","org.members","org.admins","cert.count","cert.sessions"]]);
 }
