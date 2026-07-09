@@ -1,0 +1,4 @@
+Options -Indexes
+<FilesMatch "\.(env|ini|json|log)$">
+    Deny from all
+</FilesMatch>
