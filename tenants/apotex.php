@@ -493,6 +493,33 @@ case 'list.supervisors':
 
 // ════════════════════════════════════════════════════════
 // ════════════════════════════════════════════════════════
+// KPI – SESSION DETAIL (single session, full feedback)
+// NEW — added for the Rolplay unified dashboard drilldown page.
+// Same shape as kpi.sessions but for exactly one simv_callback_id,
+// with the FULL feedback text (kpi.sessions truncates to 500 chars).
+// ════════════════════════════════════════════════════════
+case 'kpi.session_detail':
+    $id = (int)($in['id'] ?? 0);
+    if (!$id) err('id required');
+    $row = q1("
+        SELECT svc.simv_callback_id              AS id,
+               svc.simv_callback_datetime         AS fecha,
+               m.mb_id, m.mb_fullname              AS nombre, m.mb_email,
+               sv.simv_id                          AS activity_id,
+               sv.simv_title                       AS actividad,
+               sv.simv_type                        AS tipo,
+               sv.simv_case                         AS usecase_id,
+               svc.simv_callback_score             AS score,
+               svc.simv_callback_feedback          AS feedback
+        FROM   simulador_ventas_callback svc
+        JOIN   members m ON m.mb_id = svc.simv_callback_user
+        JOIN   simulador_ventas sv ON sv.simv_id = svc.simv_callback_rolplay
+        WHERE  svc.simv_callback_id = ?
+        LIMIT 1", [$id]);
+    if (!$row) err('not found', 404);
+    out(['ok' => true, 'session' => $row]);
+
+// ════════════════════════════════════════════════════════
 // COACH MAESTRO SCORE ENRICHMENT
 // Returns saex_id → score map for Coach Maestro exercises
 // (bridge activity IDs 8=Periamid/174, 9=Parkinson/175, 10=Neristren/176)
@@ -641,7 +668,7 @@ default:
               'kpi.overview','kpi.activity_summary','kpi.leaderboard',
               'kpi.score_trend','kpi.score_distribution','kpi.completion_rate',
               'kpi.user_detail','kpi.sessions','kpi.login_activity',
-              'kpi.coach_scores',
+              'kpi.coach_scores','kpi.session_detail',
               'list.activities','list.members','list.admins',
               'list.tags','list.assignments','list.supervisors',
               'sim.demorp6'];
