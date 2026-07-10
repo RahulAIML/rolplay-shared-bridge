@@ -173,21 +173,31 @@ case 'kpi.overview':
 // KPI – ACTIVITY SUMMARY
 // ════════════════════════════════════════════════════════
 case 'kpi.activity_summary':
+    // FIXED (unified dashboard audit): the original query LEFT JOINed BOTH
+    // simulador_ventas_callback and assign_simuladors_users directly off
+    // sv.simv_id in one SELECT — two independent one-to-many joins from the
+    // same row cross-multiply (fan out), so COUNT(svc.simv_callback_id) was
+    // counting callback-rows × assigned-users instead of true session count
+    // (confirmed: activity 8 showed "sessions": 2352 here vs 84 via
+    // kpi.overview?activity_id=8 — off by exactly assigned_users=28).
+    // COUNT(DISTINCT ...) fixes it; AVG/MIN/MAX were already correct since
+    // duplicating identical rows doesn't change their aggregate.
     [$dw,$db]=date_filter($in);
     $rows=q("
-        SELECT sv.simv_id                                        AS activity_id,
-               sv.simv_title                                     AS activity_name,
-               sv.simv_type                                      AS activity_type,
-               sv.simv_desc                                      AS description,
-               sv.simv_main_activity                             AS slug,
-               sv.simv_case                                      AS usecase_id,
-               COUNT(svc.simv_callback_id)                       AS sessions,
-               COUNT(DISTINCT svc.simv_callback_user)            AS unique_users,
-               ROUND(AVG(svc.simv_callback_score),2)             AS avg_score,
-               ROUND(MIN(svc.simv_callback_score),2)             AS min_score,
-               ROUND(MAX(svc.simv_callback_score),2)             AS max_score,
-               SUM(svc.simv_callback_score >= 70)                AS sessions_pass,
-               COUNT(DISTINCT asu.asim_user)                     AS assigned_users
+        SELECT sv.simv_id                                                    AS activity_id,
+               sv.simv_title                                                 AS activity_name,
+               sv.simv_type                                                  AS activity_type,
+               sv.simv_desc                                                  AS description,
+               sv.simv_main_activity                                         AS slug,
+               sv.simv_case                                                  AS usecase_id,
+               COUNT(DISTINCT svc.simv_callback_id)                          AS sessions,
+               COUNT(DISTINCT svc.simv_callback_user)                        AS unique_users,
+               ROUND(AVG(svc.simv_callback_score),2)                        AS avg_score,
+               ROUND(MIN(svc.simv_callback_score),2)                        AS min_score,
+               ROUND(MAX(svc.simv_callback_score),2)                        AS max_score,
+               COUNT(DISTINCT CASE WHEN svc.simv_callback_score >= 70
+                                    THEN svc.simv_callback_id END)           AS sessions_pass,
+               COUNT(DISTINCT asu.asim_user)                                 AS assigned_users
         FROM simulador_ventas sv
         LEFT JOIN simulador_ventas_callback svc
                ON svc.simv_callback_rolplay = sv.simv_id $dw
@@ -428,9 +438,11 @@ case 'kpi.login_activity':
 // LIST ENDPOINTS
 // ════════════════════════════════════════════════════════
 case 'list.activities':
+    // FIXED (unified dashboard audit): same double-JOIN fan-out as
+    // kpi.activity_summary — COUNT(DISTINCT ...) required.
     out(['ok'=>true,'activities'=>q(
         "SELECT sv.*,
-                COUNT(svc.simv_callback_id)            AS total_sessions,
+                COUNT(DISTINCT svc.simv_callback_id)   AS total_sessions,
                 COUNT(DISTINCT asu.asim_user)           AS assigned_users
          FROM simulador_ventas sv
          LEFT JOIN simulador_ventas_callback svc ON svc.simv_callback_rolplay=sv.simv_id
