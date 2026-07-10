@@ -485,6 +485,11 @@ case "org.admins":
 case "org.certification":
     // Exact official query from queries_Sanfer.pdf — profiles_assigned JOIN members,
     // mb_admin != 97, tester/prueba/demo/vacante exclusion. No bhl_id line filter.
+    // UPDATED (unified dashboard audit, verified against queries_Sanfer.pdf's
+    // "Users certified by line" query): added the sales_line join so callers
+    // get the REAL line name (bhl_line) per profile_id, matching the PDF's
+    // own "GROUP BY prf_assigned_profile" breakdown — this was previously
+    // missing here, forcing callers to fabricate a placeholder line label.
     $cacheFile = sys_get_temp_dir()."/sanfer_org_certification_v3.json";
     if(empty($in["refresh"]) && is_file($cacheFile) && time()-filemtime($cacheFile) < METRIC_TTL) {
         $cached = json_decode((string)file_get_contents($cacheFile), true);
@@ -495,12 +500,14 @@ case "org.certification":
             SELECT LOWER(m.mb_user) AS mb_user,
                    m.mb_fullname AS nombre, m.mb_reference AS empleado, m.mb_ruta AS ruta,
                    pa.prf_assigned_profile AS profile_id,
+                   sales_line.bhl_line AS linea,
                    IF(pa.prf_assigned_fase1=1 AND pa.prf_assigned_fase2=1 AND pa.prf_assigned_fase3=1, 1, 0) AS finalized,
                    pa.prf_assigned_fase1 AS fase1, pa.prf_assigned_fase1_score AS fase1_score,
                    pa.prf_assigned_fase2 AS fase2, pa.prf_assigned_fase2_score AS fase2_score,
                    pa.prf_assigned_fase3 AS fase3, pa.prf_assigned_fase3_score AS fase3_score
             FROM   profiles_assigned AS pa
             JOIN   members AS m ON pa.prf_assigned_user = m.mb_id
+            LEFT JOIN sales_line ON sales_line.bhl_id = pa.prf_assigned_profile
             WHERE  m.mb_admin != 97
               AND  NOT (".TESTER_EXCL.")
             ORDER BY m.mb_id ASC
